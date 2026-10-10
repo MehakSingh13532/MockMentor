@@ -1,0 +1,218 @@
+import mongoose from 'mongoose';
+
+export interface IPerformanceAnalysis {
+  communicationSkills: {
+    score: number; // 0-100
+    strengths: string[];
+    improvements: string[];
+    feedback: string;
+  };
+  technicalKnowledge: {
+    score: number; // 0-100
+    strengths: string[];
+    improvements: string[];
+    feedback: string;
+  };
+  problemSolving: {
+    score: number; // 0-100
+    strengths: string[];
+    improvements: string[];
+    feedback: string;
+  };
+  confidence: {
+    score: number; // 0-100
+    analysis: string;
+    recommendations: string[];
+  };
+  // Omitted when the session had no camera data — the UI shows "Not assessed" rather than
+  // a score the model had no visual signal to base on.
+  bodyLanguage?: {
+    score: number; // 0-100
+    observations: string[];
+    recommendations: string[];
+  };
+}
+
+export interface IDetailedFeedback {
+  overallScore: number; // 0-100
+  summary: string;
+  keyStrengths: string[];
+  areasForImprovement: string[];
+  specificFeedback: {
+    questionId: string;
+    question: string;
+    userResponse: string;
+    feedback: string;
+    score: number;
+    suggestions: string[];
+  }[];
+  behavioralInsights: {
+    pauseAnalysis: string;
+    speechPaceAnalysis: string;
+    confidenceAnalysis: string;
+    emotionalStateAnalysis: string;
+  };
+  recommendations: {
+    immediate: string[];
+    shortTerm: string[];
+    longTerm: string[];
+  };
+}
+
+export interface IFaceAnalytics {
+  duration_s: number;
+  frame_count: number;
+  emotions_avg: Record<string, number>;
+  dominant_histogram: Record<string, number>;
+  stress_avg: number;
+  stress_peak: number;
+  engagement_avg: number;
+  confidence_avg: number;
+  attention_avg: number;
+  attention_on_screen_frac: number;
+  total_blinks: number;
+  blinks_per_min_avg: number;
+}
+
+export interface IInterviewReport extends mongoose.Document {
+  interviewId: string;
+  sessionId: string;
+  userId?: string;
+  guestId?: string;
+  jobTitle: string;
+  mentorName: string;
+  performanceAnalysis: IPerformanceAnalysis;
+  detailedFeedback: IDetailedFeedback;
+  faceAnalytics?: IFaceAnalytics;
+  interviewDuration: number;
+  generatedAt: Date;
+  reportVersion: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Text fields are deliberately not `required`: Mongoose's required rejects an empty string, and
+// the model legitimately returns "" (e.g. userResponse for a question the candidate never
+// answered). That used to fail save() after the AI call had already been paid for. Shape and
+// types are validated before saving by the zod schema in lib/reportSchema.ts.
+const PerformanceAnalysisSchema = new mongoose.Schema({
+  communicationSkills: {
+    score: { type: Number, required: true, min: 0, max: 100 },
+    strengths: [{ type: String }],
+    improvements: [{ type: String }],
+    feedback: { type: String, default: '' }
+  },
+  technicalKnowledge: {
+    score: { type: Number, required: true, min: 0, max: 100 },
+    strengths: [{ type: String }],
+    improvements: [{ type: String }],
+    feedback: { type: String, default: '' }
+  },
+  problemSolving: {
+    score: { type: Number, required: true, min: 0, max: 100 },
+    strengths: [{ type: String }],
+    improvements: [{ type: String }],
+    feedback: { type: String, default: '' }
+  },
+  confidence: {
+    score: { type: Number, required: true, min: 0, max: 100 },
+    analysis: { type: String, default: '' },
+    recommendations: [{ type: String }]
+  },
+  bodyLanguage: {
+    score: { type: Number, min: 0, max: 100 },
+    observations: [{ type: String }],
+    recommendations: [{ type: String }]
+  }
+});
+
+const DetailedFeedbackSchema = new mongoose.Schema({
+  overallScore: { type: Number, required: true, min: 0, max: 100 },
+  summary: { type: String, default: '' },
+  keyStrengths: [{ type: String }],
+  areasForImprovement: [{ type: String }],
+  specificFeedback: [{
+    questionId: { type: String, required: true },
+    question: { type: String, default: '' },
+    userResponse: { type: String, default: '' },
+    feedback: { type: String, default: '' },
+    score: { type: Number, required: true, min: 0, max: 100 },
+    suggestions: [{ type: String }]
+  }],
+  behavioralInsights: {
+    pauseAnalysis: { type: String, default: '' },
+    speechPaceAnalysis: { type: String, default: '' },
+    confidenceAnalysis: { type: String, default: '' },
+    emotionalStateAnalysis: { type: String, default: '' }
+  },
+  recommendations: {
+    immediate: [{ type: String }],
+    shortTerm: [{ type: String }],
+    longTerm: [{ type: String }]
+  }
+});
+
+const InterviewReportSchema = new mongoose.Schema(
+  {
+    interviewId: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    sessionId: {
+      type: String,
+      required: true,
+    },
+    userId: {
+      type: String,
+    },
+    guestId: {
+      type: String,
+    },
+    jobTitle: {
+      type: String,
+      required: true,
+    },
+    mentorName: {
+      type: String,
+      required: true,
+    },
+    performanceAnalysis: {
+      type: PerformanceAnalysisSchema,
+      required: true,
+    },
+    detailedFeedback: {
+      type: DetailedFeedbackSchema,
+      required: true,
+    },
+    interviewDuration: {
+      type: Number,
+      required: true,
+    },
+    generatedAt: {
+      type: Date,
+      required: true,
+    },
+    faceAnalytics: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
+    },
+    reportVersion: {
+      type: String,
+      default: '1.0',
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Indexes for efficient queries
+InterviewReportSchema.index({ userId: 1 });
+InterviewReportSchema.index({ guestId: 1 });
+InterviewReportSchema.index({ generatedAt: -1 });
+
+const InterviewReportModel = (mongoose.models.InterviewReport as mongoose.Model<IInterviewReport>) ||
+  mongoose.model<IInterviewReport>('InterviewReport', InterviewReportSchema);
+
+export default InterviewReportModel;
